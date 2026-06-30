@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  nginx2prod:
+    image: nginx:latest
+    container_name: nginx_proxy2prod
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - '8889:8889'
+    restart: always
+
+volumes:
+  postgres_data:

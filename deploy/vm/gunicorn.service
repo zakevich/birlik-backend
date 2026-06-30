@@ -1,0 +1,20 @@
+[Unit]
+Description=gunicorn daemon
+Requires=gunicorn.socket
+After=network.target
+
+
+[Service]
+User=admin
+Group=www-data
+WorkingDirectory=/opt/apilog-backend
+ExecStart=/opt/apilog-backend/.venv/bin/gunicorn \
+          --access-logfile - \
+          --workers 3 \
+          --bind unix:/run/gunicorn.sock \
+          apilog_backend.wsgi:application
+
+EnvironmentFile=/opt/apilog-backend/.env
+
+[Install]
+WantedBy=multi-user.target
