@@ -16,6 +16,8 @@ Here is the step-by-step guidance how to run backend locally from scratch
 
 ## run migrations
 
+python manage.py makemigrations
+
 `python manage.py migrate`
 
 ## run backend
@@ -25,3 +27,8 @@ Here is the step-by-step guidance how to run backend locally from scratch
 ## open web-site
 
 http://localhost:8080/admin/
+
+for local
+Username: birliq
+Email address: test@birliq.kz
+Password: birliq
