@@ -20,52 +20,90 @@ class Role(models.Model):
         return self.name
 
 
-class Company(models.Model):
+class Supplier(models.Model):
     """
-    Таблица компаний (Поставщики и Магазины)
+    Таблица Поставщиков. Поставщик всегда один в системе.
     """
-    class CompanyType(models.TextChoices):
-        SUPPLIER = 'supplier', 'Поставщик'
-        SHOP = 'shop', 'Магазин'
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, verbose_name="Название компании")
-    company_type = models.CharField(
-        max_length=20, 
-        choices=CompanyType.choices, 
-        verbose_name="Тип бизнеса"
+    name = models.CharField(max_length=255, verbose_name="Название компании поставщика")
+    contact_person = models.CharField(max_length=255, blank=True, null=True, verbose_name="Контактное лицо")
+    email = models.EmailField(blank=True, null=True, verbose_name="Email")
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    # Специфичные поля для поставщика (пример)
+    min_order_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00, verbose_name="Минимальная сумма заказа"
     )
-    is_active = models.BooleanField(default=True, verbose_name="Активна")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата регистрации")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'companies'
-        verbose_name = 'Компания'
-        verbose_name_plural = 'Компании'
+        db_table = 'suppliers'
+        verbose_name = 'Поставщик'
+        verbose_name_plural = 'Поставщики'
 
     def __str__(self):
-        return f"{self.name} ({self.get_company_type_display()})"
+        return self.name
+
+
+class ShopProfile(models.Model):
+    """
+    Профиль/Аккаунт Магазинов (Юридическое лицо или кабинет владельца сети).
+    У одного профиля может быть множество физических торговых точек (Shops).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, verbose_name="Название сети / Юрлица")
+    contact_person = models.CharField(max_length=255, blank=True, null=True, verbose_name="Контактное лицо")
+    email = models.EmailField(blank=True, null=True, verbose_name="Email")
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'shop_profiles'
+        verbose_name = 'Профиль магазинов (Сеть)'
+        verbose_name_plural = 'Профили магазинов (Сети)'
+
+    def __str__(self):
+        return self.name
+
+
+class Shop(models.Model):
+    """
+    Конкретная физическая торговая точка (магазин), куда доставляется товар.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        ShopProfile, 
+        on_delete=models.CASCADE, 
+        related_name='shops', 
+        verbose_name="Родительский профиль/сеть"
+    )
+    name = models.CharField(max_length=255, verbose_name="Название конкретной точки")
+    address = models.CharField(max_length=500, verbose_name="Фактический адрес")
+    is_active = models.BooleanField(default=True, verbose_name="Точка работает")
+
+    class Meta:
+        db_table = 'shops'
+        verbose_name = 'Торговая точка'
+        verbose_name_plural = 'Торговые точки'
+
+    def __str__(self):
+        return f"{self.profile.name} - {self.name}"
 
 
 class User(AbstractUser):
     """
-    Единая таблица пользователей для всех сущностей (Внутренние, Поставщики, Магазины).
-    Наследуется от AbstractUser для сохранения механизмов авторизации Django.
+    Единая таблица пользователей. Авторизация идет через нее.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone = models.CharField(max_length=20, unique=True, blank=True, null=True, verbose_name="Телефон")
     
-    # Связь "Многие-ко-Многим" через промежуточную таблицу CompanyUser
-    companies = models.ManyToManyField(
-        Company, 
-        through='CompanyUser', 
-        related_name='users',
-        verbose_name="Компании"
-    )
-
-    # Поля для внутренних пользователей (Глобальный админ, Менеджер, Редактор)
-    # Для них привязка к компании будет отсутствовать, а роль задается здесь напрямую
+    # Внутренняя роль (Админ платформы, Менеджер, Редактор каталога)
     internal_role = models.ForeignKey(
         Role, 
         on_delete=models.SET_NULL, 
@@ -84,25 +122,54 @@ class User(AbstractUser):
         return f"{self.get_full_name() or self.username} ({self.email})"
 
 
-class CompanyUser(models.Model):
+class SupplierUser(models.Model):
     """
-    Промежуточная таблица связывающая Пользователя, Компанию и его Роль в этой компании.
-    Реализует Multi-tenancy (один пользователь может состоять в разных компаниях с разными ролями).
+    Промежуточная таблица: Пользователи Поставщиков и их роли.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='company_memberships')
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='employee_memberships')
-    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='company_users')
-    
-    is_active = models.BooleanField(default=True, verbose_name="Активен в компании")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='supplier_memberships')
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='employees')
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='supplier_users')
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'company_users'
-        # Уникальный индекс: пользователь может иметь только одну роль в рамках конкретной компании
-        unique_together = ('user', 'company')
-        verbose_name = 'Сотрудник компании'
-        verbose_name_plural = 'Сотрудники компаний'
+        db_table = 'supplier_users'
+        unique_together = ('user', 'supplier')
+        verbose_name = 'Сотрудник поставщика'
+        verbose_name_plural = 'Сотрудники поставщиков'
 
-    def __str__(self):
-        return f"{self.user.username} -> {self.company.name} ({self.role.name})"
+
+class ShopUser(models.Model):
+    """
+    Промежуточная таблица: Пользователи Магазинов и их роли в рамках всей сети.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shop_memberships')
+    shop_profile = models.ForeignKey(ShopProfile, on_delete=models.CASCADE, related_name='employees')
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='shop_users')
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    # Опционально: можно привязать Продавца к конкретной торговой точке (Shop),
+    # чтобы он видел заказы только своего магазина, а не всей сети Владельца.
+    assigned_shop = models.ForeignKey(
+        Shop,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_staff',
+        verbose_name="Закрепленная торговая точка"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def shop(self):
+        return self.assigned_shop or self.shop_profile
+
+    class Meta:
+        db_table = 'shop_users'
+        unique_together = ('user', 'shop_profile')
+        verbose_name = 'Сотрудник магазина'
+        verbose_name_plural = 'Сотрудники магазинов'
